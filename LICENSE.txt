@@ -1,0 +1,9 @@
+Copyright (c) 2026 eTechFlow Pvt. Ltd.
+All rights reserved.
+
+This software is licensed, not sold. Use of this software is governed by
+the eTechFlow Commercial License attached to your purchase. Redistribution
+or modification outside the terms of that license is prohibited.
+
+For licensing questions: contact your purchase channel or info@etechflow.com.
+
