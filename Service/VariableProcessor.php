@@ -57,7 +57,7 @@ class VariableProcessor
                 case 'category':
                     return isset($context['category']) ? $this->categoryVar($context['category'], $attr) : '';
                 case 'cms':
-                    return (isset($context['cms']) && $attr === 'title') ? (string)$context['cms']->getTitle() : '';
+                    return isset($context['cms']) ? $this->cmsVar($context['cms'], $attr) : '';
             }
         } catch (\Throwable $e) {
             return '';
@@ -95,6 +95,18 @@ class VariableProcessor
                 return trim(strip_tags((string)$category->getData('description')));
         }
         $data = $category->getData($attr);
+        return ($data !== null && $data !== '' && !is_array($data)) ? (string)$data : '';
+    }
+
+    private function cmsVar($page, string $attr): string
+    {
+        switch ($attr) {
+            case 'title':
+                return (string)$page->getTitle();
+            case 'content_heading':
+                return (string)$page->getContentHeading();
+        }
+        $data = $page->getData($attr);
         return ($data !== null && $data !== '' && !is_array($data)) ? (string)$data : '';
     }
 

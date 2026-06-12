@@ -77,6 +77,30 @@ class VariableProcessorTest extends TestCase
         $this->assertSame('xy', $out);
     }
 
+    public function testCmsTitleAndStoreName(): void
+    {
+        $page = $this->cmsMock(['getTitle' => 'About Us']);
+        $out = $this->processor->process(
+            '{{cms.title}} | {{store.name}}',
+            ['store' => $this->store, 'cms' => $page]
+        );
+        $this->assertSame('About Us | Keystation', $out);
+    }
+
+    public function testCmsContentHeadingAndGenericAttribute(): void
+    {
+        $page = $this->cmsMock(['getContentHeading' => 'Welcome', 'getData' => 'about-us']);
+        $this->assertSame('Welcome', $this->processor->process('{{cms.content_heading}}', ['store' => $this->store, 'cms' => $page]));
+        $this->assertSame('about-us', $this->processor->process('{{cms.identifier}}', ['store' => $this->store, 'cms' => $page]));
+    }
+
+    public function testCmsTitleFallbackWhenEmpty(): void
+    {
+        $page = $this->cmsMock(['getTitle' => '']);
+        $out = $this->processor->process('{{cms.title|Our Store}}', ['store' => $this->store, 'cms' => $page]);
+        $this->assertSame('Our Store', $out);
+    }
+
     /**
      * @param array<string,mixed> $returns
      * @return Product&MockObject
@@ -93,5 +117,21 @@ class VariableProcessorTest extends TestCase
         $product->method('getAttributeText')->willReturn(false);
         $product->method('getData')->willReturn(null);
         return $product;
+    }
+
+    /**
+     * @param array<string,mixed> $returns
+     * @return \Magento\Cms\Model\Page&MockObject
+     */
+    private function cmsMock(array $returns)
+    {
+        $page = $this->getMockBuilder(\Magento\Cms\Model\Page::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getTitle', 'getContentHeading', 'getData'])
+            ->getMock();
+        $page->method('getTitle')->willReturn($returns['getTitle'] ?? '');
+        $page->method('getContentHeading')->willReturn($returns['getContentHeading'] ?? '');
+        $page->method('getData')->willReturn($returns['getData'] ?? null);
+        return $page;
     }
 }

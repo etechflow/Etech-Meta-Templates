@@ -8,6 +8,7 @@ use Magento\Framework\App\Request\Http;
 use Magento\Store\Model\StoreManagerInterface;
 use Etechflow\MetaTemplates\Model\ResourceModel\Template\CollectionFactory;
 use Etechflow\MetaTemplates\Model\Config;
+use Magento\Cms\Model\Page as CmsPage;
 
 /**
  * Resolves the matching template's meta for the current request. Memoized per
@@ -25,7 +26,8 @@ class MetaResolver
         private StoreManagerInterface $storeManager,
         private CollectionFactory $collectionFactory,
         private VariableProcessor $processor,
-        private Config $config
+        private Config $config,
+        private CmsPage $cmsPage
     ) {
     }
 
@@ -108,10 +110,17 @@ class MetaResolver
             }
             $ctx['category'] = $c;
         } elseif ($type === 'cms_page') {
+            // The storefront never registers 'cms_page' in the registry (only the
+            // adminhtml page-edit controller does), so read the current page from the
+            // shared Cms\Model\Page that Helper\Page loads during the controller.
             $pg = $this->registry->registry('cms_page');
-            if ($pg) {
-                $ctx['cms'] = $pg;
+            if (!$pg || !$pg->getId()) {
+                $pg = $this->cmsPage;
             }
+            if (!$pg->getId()) {
+                return null; // page not loaded yet — retry on a later read, don't cache
+            }
+            $ctx['cms'] = $pg;
         }
         return $ctx;
     }
