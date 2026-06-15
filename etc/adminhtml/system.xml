@@ -37,7 +37,7 @@
                     <label>License Portal URL</label>
                     <comment><![CDATA[
                         The eTechFlow portal endpoint that validates SP-XXXX subscription keys.
-                        Default: <code>https://subpanel-paralyses-president.ngrok-free.dev/license/validate</code>.
+                        Default: <code>https://license-service.etechflow.com/license/validate</code>.
                         Change only if eTechFlow notifies you of a new portal URL.
                     ]]></comment>
                 </field>

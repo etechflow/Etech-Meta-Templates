@@ -11,7 +11,7 @@
                 <issued_key></issued_key>
                 <issued_at>0</issued_at>
                 <ip_blocked>0</ip_blocked>
-                <portal_url>https://subpanel-paralyses-president.ngrok-free.dev/license/validate</portal_url>
+                <portal_url>https://license-service.etechflow.com/license/validate</portal_url>
             </license>
             <payment>
                 <stripe_secret_key></stripe_secret_key>

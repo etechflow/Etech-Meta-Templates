@@ -47,7 +47,7 @@ class LicenseValidator
     /** Shared bundle config path — same value across all eTechFlow modules. */
     public const XML_PATH_BUNDLE_LICENSE_KEY = 'etechflow_bundle/license/license_key';
 
-    private const DEFAULT_PORTAL_URL   = 'https://subpanel-paralyses-president.ngrok-free.dev/license/validate';
+    private const DEFAULT_PORTAL_URL   = 'https://license-service.etechflow.com/license/validate';
     public  const PORTAL_CACHE_TTL     = 60;  // valid result cache
     public  const PORTAL_CACHE_TTL_BAD = 60;  // reject cache
 
