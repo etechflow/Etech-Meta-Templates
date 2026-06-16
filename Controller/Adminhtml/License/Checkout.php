@@ -7,36 +7,31 @@ namespace Etechflow\MetaTemplates\Controller\Adminhtml\License;
 use Etechflow\MetaTemplates\Model\LicenseValidator;
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
-use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Controller\ResultFactory;
 use Magento\Framework\Controller\ResultInterface;
-use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\HTTP\Client\Curl;
 
 /**
- * Creates a Stripe Checkout session using the keys entered in
- * Stores -> Config -> Etechflow -> Meta Templates -> Payment,
- * then redirects the browser to Stripe for card payment.
+ * Starts checkout by delegating to the eTechFlow webstore licensing broker
+ * (module.etechflow.com). The broker opens a Paddle transaction on the
+ * webstore's OWN Paddle account and returns the hosted pay URL; the portal
+ * still issues the SP-XXXX key once payment clears. No card keys live in
+ * Magento. Same redirect flow as the prior Stripe checkout.
  */
 class Checkout extends Action
 {
     public const ADMIN_RESOURCE = 'Etechflow_MetaTemplates::config';
 
-    private const XML_STRIPE_SECRET = 'etechflow_metatemplates/payment/stripe_secret_key';
-    private const XML_STRIPE_CURR   = 'etechflow_metatemplates/payment/stripe_currency';
+    private const MODULE_ID = 'meta-templates';
+    private const BROKER_URL = 'https://module.etechflow.com/api/license/checkout';
+    private const LICENSE_TOKEN = 'lcsk_8f3b9d2a7c14e605b9af2e7c1d8043f6';
 
-    /** Plan slugs -> [name, amount in cents, display]. Tier-based plans. */
-    private const PLAN_INFO = [
-        'metatpl_weekly'  => ['name' => 'Meta Templates — Weekly',  'amount' => 900,   'display' => '$9/week'],
-        'metatpl_monthly' => ['name' => 'Meta Templates — Monthly', 'amount' => 2900,  'display' => '$29/month'],
-        'metatpl_yearly'  => ['name' => 'Meta Templates — Yearly',  'amount' => 29000, 'display' => '$290/year'],
-    ];
+    /** Allowed plan slugs (the portal validates again server-side). */
+    private const PLAN_SLUGS = ['metatpl_weekly', 'metatpl_monthly', 'metatpl_yearly'];
 
     public function __construct(
         Context $context,
         private readonly Curl $curl,
-        private readonly ScopeConfigInterface $scopeConfig,
-        private readonly EncryptorInterface $encryptor,
         private readonly LicenseValidator $licenseValidator
     ) {
         parent::__construct($context);
@@ -49,68 +44,47 @@ class Checkout extends Action
         $email  = trim((string) $this->getRequest()->getPost('email', ''));
         $domain = $this->licenseValidator->getCurrentHost();
 
-        if (!$plan || !isset(self::PLAN_INFO[$plan])) {
+        $gate = $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setPath('metatemplates/license/gate');
+
+        if (!$plan || !in_array($plan, self::PLAN_SLUGS, true)) {
             $this->messageManager->addErrorMessage(__('Invalid plan selected.'));
-            return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setPath('metatemplates/license/gate');
+            return $gate;
         }
         if (!$name || !$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->messageManager->addErrorMessage(__('Please enter a valid name and email address.'));
-            return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setPath('metatemplates/license/gate');
+            return $gate;
         }
 
-        $stripeRaw = trim((string) $this->scopeConfig->getValue(self::XML_STRIPE_SECRET));
-        $stripeKey = $stripeRaw !== '' ? trim((string) $this->encryptor->decrypt($stripeRaw)) : '';
-        $currency  = strtolower(trim((string) $this->scopeConfig->getValue(self::XML_STRIPE_CURR))) ?: 'usd';
-
-        if (!$stripeKey || str_starts_with($stripeKey, '****')) {
-            $this->messageManager->addErrorMessage(
-                __('Stripe Secret Key is not configured. Go to Stores -> Config -> Etechflow -> Meta Templates -> Payment.')
-            );
-            return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setPath('metatemplates/license/gate');
-        }
-
-        $planInfo   = self::PLAN_INFO[$plan];
-        $successUrl = $this->getUrl('metatemplates/license/activated')
-            . '?session_id={CHECKOUT_SESSION_ID}&plan=' . urlencode($plan)
-            . '&domain=' . urlencode($domain) . '&name=' . urlencode($name) . '&email=' . urlencode($email);
-        $cancelUrl  = $this->getUrl('metatemplates/license/gate');
-
-        $postData = http_build_query([
-            'payment_method_types[0]'                              => 'card',
-            'line_items[0][price_data][currency]'                  => $currency,
-            'line_items[0][price_data][product_data][name]'        => $planInfo['name'] . ' — ETechFlow',
-            'line_items[0][price_data][product_data][description]' => 'Meta Templates module for ' . $domain,
-            'line_items[0][price_data][unit_amount]'               => $planInfo['amount'],
-            'line_items[0][quantity]'                              => 1,
-            'mode'                                                 => 'payment',
-            'customer_email'                                       => $email,
-            'metadata[plan]'                                       => $plan,
-            'metadata[domain]'                                     => $domain,
-            'metadata[name]'                                       => $name,
-            'metadata[email]'                                      => $email,
-            'success_url'                                          => $successUrl,
-            'cancel_url'                                           => $cancelUrl,
+        $payload = json_encode([
+            'plan'             => $plan,
+            'name'             => $name,
+            'email'            => $email,
+            'domain'           => $domain,
+            'module'           => self::MODULE_ID,
+            'magento_callback' => $this->getUrl('metatemplates/license/activated'),
+            'magento_cancel'   => $this->getUrl('metatemplates/license/gate'),
         ]);
 
         try {
-            $this->curl->setTimeout(15);
-            $this->curl->addHeader('Authorization', 'Bearer ' . $stripeKey);
-            $this->curl->addHeader('Content-Type', 'application/x-www-form-urlencoded');
-            $this->curl->post('https://api.stripe.com/v1/checkout/sessions', $postData);
+            $this->curl->setTimeout(20);
+            $this->curl->addHeader('Content-Type', 'application/json');
+            $this->curl->addHeader('Accept', 'application/json');
+            $this->curl->addHeader('X-ETF-License-Token', self::LICENSE_TOKEN);
+            $this->curl->post(self::BROKER_URL, $payload);
             $status = (int) $this->curl->getStatus();
             $body   = (string) $this->curl->getBody();
         } catch (\Throwable $e) {
-            $this->messageManager->addErrorMessage(__('Could not connect to Stripe. Please try again.'));
-            return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setPath('metatemplates/license/gate');
+            $this->messageManager->addErrorMessage(__('Could not reach the licensing portal. Please try again.'));
+            return $gate;
         }
 
         $data = json_decode($body, true);
-        if ($status !== 200 || empty($data['url'])) {
-            $err = $data['error']['message'] ?? ('Stripe returned status ' . $status);
-            $this->messageManager->addErrorMessage(__('Stripe error: %1', $err));
-            return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setPath('metatemplates/license/gate');
+        if ($status === 200 && !empty($data['url'])) {
+            return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setUrl((string) $data['url']);
         }
 
-        return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT)->setUrl($data['url']);
+        $err = is_array($data) && !empty($data['error']) ? $data['error'] : ('Portal returned status ' . $status);
+        $this->messageManager->addErrorMessage(__('Checkout error: %1', $err));
+        return $gate;
     }
 }
