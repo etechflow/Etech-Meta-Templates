@@ -1,0 +1,66 @@
+<?php
+/**
+ * @var \Magento\Backend\Block\Template $block
+ *
+ * eTechFlow-update-notice: "update available" banner for Meta Templates.
+ * Fully fail-safe — any network/parse error hides the banner. Cached 6h.
+ */
+$etfUpdate = null;
+try {
+    $etfPackage = 'etechflow/module-meta-templates';
+    $etfLatestUrl = 'https://license-service.etechflow.com/composer/latest/etechflow/module-meta-templates.json';
+    $etfOm = \Magento\Framework\App\ObjectManager::getInstance();
+    $etfCache = $etfOm->get(\Magento\Framework\App\CacheInterface::class);
+    $etfCacheKey = 'etechflow_mt_latest_version';
+    $etfRaw = $etfCache->load($etfCacheKey);
+    if ($etfRaw === false || $etfRaw === null || $etfRaw === '') {
+        $etfCurl = $etfOm->create(\Magento\Framework\HTTP\Client\Curl::class);
+        $etfCurl->setTimeout(5);
+        $etfCurl->get($etfLatestUrl);
+        $etfRaw = ((int) $etfCurl->getStatus() === 200) ? (string) $etfCurl->getBody() : '{}';
+        $etfCache->save($etfRaw, $etfCacheKey, [], 21600);
+    }
+    $etfData = json_decode($etfRaw, true);
+    $etfLatest = is_array($etfData) ? (string) ($etfData['latest_version'] ?? '') : '';
+    if ($etfLatest !== '') {
+        $etfInstalled = '';
+        if (class_exists('\Composer\InstalledVersions')) {
+            try {
+                $etfInstalled = (string) \Composer\InstalledVersions::getPrettyVersion($etfPackage);
+            } catch (\Throwable $e) {
+                $etfInstalled = '';
+            }
+        }
+        $etfInstalled = ltrim($etfInstalled, 'v');
+        if ($etfInstalled !== '' && version_compare($etfInstalled, $etfLatest, '<')) {
+            $etfUpdate = [
+                'installed' => $etfInstalled,
+                'latest'    => $etfLatest,
+                'notes'     => is_array($etfData) ? (string) ($etfData['release_notes'] ?? '') : '',
+            ];
+        }
+    }
+} catch (\Throwable $etfE) {
+    $etfUpdate = null;
+}
+?>
+<?php if ($etfUpdate): ?>
+<div style="background:#fff8e5; border:1px solid #f0c36d; border-left:4px solid #eaa800; border-radius:4px; padding:14px 20px; margin-bottom:18px; display:flex; align-items:center; gap:14px;">
+    <span style="font-size:22px; line-height:1;">&#128276;</span>
+    <div style="flex:1;">
+        <div style="font-size:14px; font-weight:600; color:#6b4e00;">
+            <?= $block->escapeHtml(__('eTechFlow Meta Templates %1 is available', $etfUpdate['latest'])); ?>
+            <span style="font-weight:400; color:#8a7430;">
+                <?= $block->escapeHtml(__('(you have %1)', $etfUpdate['installed'])); ?>
+            </span>
+        </div>
+        <div style="font-size:12px; color:#8a7430; margin-top:3px;">
+            <?= $block->escapeHtml(__('Update with:')); ?>
+            <code style="background:#fff; border:1px solid #e3d3a3; border-radius:3px; padding:1px 6px;">composer update etechflow/module-meta-templates</code>
+            <?php if (!empty($etfUpdate['notes'])): ?>
+                &mdash; <?= $block->escapeHtml($etfUpdate['notes']); ?>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>

@@ -2,6 +2,7 @@
 <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
     <body>
         <referenceContainer name="content">
+            <block class="Magento\Backend\Block\Template" name="etechflow_mt_update_notice" template="Etechflow_MetaTemplates::update-notice.phtml" before="-" cacheable="false"/>
             <uiComponent name="etechflow_metatemplate_listing"/>
         </referenceContainer>
     </body>
